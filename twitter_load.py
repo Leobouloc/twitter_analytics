@@ -6,32 +6,37 @@ Created on Sat Feb 14 09:56:30 2015
 """
 
 import pandas as pd
-from os.path import join
+import os
+from os.path import join, exists
+from os import listdir
 from time import sleep
 import twitter
 
-from access_keys import key, secret, key_access, secret_key
+from access_keys import key, secret, key_access, secret_access
 
 
 def init_new_table(path, list_text_name):
     print 'creating csv table...'
+    print path
     f = open (join(path, list_text_name))
     text = f.read()
     f.close()
     api = twitter.Api(consumer_key = key,
-                              consumer_secret = secret,
+                                  consumer_secret = secret,
                               access_token_key = key_access,
                               access_token_secret = secret_access)   
     rappers_list = text.split('\n')
     rapper_dict_list = []
     for x in rappers_list:
-        print x
-        rapper_dict = dict()
-        rapper_dict['name'] = x.split(' : ')[0]
-        rapper_dict['twitter'] = x.split(' : ')[1]
-        a = api.GetUser(screen_name = rapper_dict['twitter'])
-        rapper_dict['followers_count'] = a.AsDict()['followers_count']
-        rapper_dict_list += [rapper_dict]
+        if x[0] != '#':
+            print x
+            rapper_dict = dict()
+            rapper_dict['name'] = x.split(' : ')[0]
+            rapper_dict['twitter'] = x.split(' : ')[1]
+            a = api.GetUser(screen_name = rapper_dict['twitter'])
+            rapper_dict['followers_count'] = a.AsDict()['followers_count']
+            rapper_dict_list += [rapper_dict]
+            
 #    import pdb
 #    pdb.set_trace()
     table = pd.DataFrame()
@@ -90,42 +95,49 @@ def step(path_cursors, path_ids, twitter_name):
     print cursor
     return str(cursor) != '0'
 
+def load_all(to_load):
+    path = '.'
+    path_cursors = join(path, 'data', 'cursors', to_load)
+    path_ids = join(path, 'data', 'ids', to_load)
+    path_queue = join(path, 'data', 'loading_queue')
+    
+    if not os.path.exists(path_cursors):
+        os.makedirs(path_cursors)
+    if not os.path.exists(path_ids):
+        os.makedirs(path_ids)
+
+##    while True:
+#        try:
+    if to_load + '.csv' in listdir(path_queue):
+        table = pd.read_csv(join(path_queue, to_load + '.csv'), sep = ';')  
+    else:
+        init_new_table(path_queue, to_load + '.txt')
+        table = pd.read_csv(join(path_queue, to_load + '.csv'), sep = ';') 
+    for twitter_name in table.twitter:
+        print '  >>>', twitter_name
+        try:
+            f = open(join(path_cursors, twitter_name + '_cursor.txt'), 'r')
+            text = f.read()
+            f.close()
+            if '0' not in text.split('\n'):
+                go = True
+            else:
+                go = False
+        except:
+            go = True
+            
+        while go:
+            go = step(path_cursors, path_ids, twitter_name)
+            sleep(60)
+#        except:
+#            sleep(60)
+
 
 if __name__ == '__main__':
+    to_load = 'top_100_fr'
+    load_all(to_load)
     
-    to_load = 'politiques_fr'
-    path = 'C:\\Users\\work\\Documents\\Python_Scripts\\twitter_analytics'
-    path_cursors = join(path, 'cursors', to_load)
-    path_ids = join(path, 'ids', to_load)
-    
-    
-    twitter_name = 'eminem'
-
-    while True:
-        try:
-            try:
-                table = pd.read_csv(join(path, to_load + '.csv'), sep = ';')  
-            except:
-                init_new_table(path, to_load + '.txt')
-                table = pd.read_csv(join(path, to_load + '.csv'), sep = ';') 
-            for twitter_name in table.twitter:
-                print '  >>>', twitter_name
-                try:
-                    f = open(join(path_cursors, twitter_name + '_cursor.txt'), 'r')
-                    text = f.read()
-                    f.close()
-                    if '0' not in text.split('\n'):
-                        go = True
-                    else:
-                        go = False
-                except:
-                    go = True
-                    
-                while go:
-                    go = step(path_cursors, path_ids, twitter_name)
-                    sleep(60)
-        except:
-            sleep(60)
+ 
             
     
 
