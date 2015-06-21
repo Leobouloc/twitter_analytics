@@ -3,6 +3,12 @@
 Created on Sun Feb 15 03:32:05 2015
 
 @author: leo
+
+Trying different stuff here : 
+One part is just loading the data.
+Another part is creating a co-existance frequency table
+Another part is implementing a "word2vec-like" thing to     
+
 """
 
 import numpy as np
@@ -12,16 +18,24 @@ from os import listdir
 from os.path import isfile, join
 import itertools
 
-path = 'C:\\Users\\work\\Documents\\Python_Scripts\\twitter_analytics'
-path_ids = 'C:\\Users\\work\\Documents\\Python_Scripts\\twitter_analytics\\ids\\rappers_fr'
-path_ids_news_fr = 'C:\\Users\\work\\Documents\\Python_Scripts\\twitter_analytics\\ids\\news_fr'
-path_ids_politiques_fr = 'C:\\Users\\work\\Documents\\Python_Scripts\\twitter_analytics\\ids\\politiques_fr'
+from scipy.spatial.distance import cosine
+
+import pandas_pybrain
+import pybrain
+from pybrain.datasets import SupervisedDataSet
+from pybrain.tools.shortcuts import buildNetwork
+from pybrain.supervised.trainers import BackpropTrainer
+from pybrain.structure.modules   import SigmoidLayer
+from pybrain.structure.modules   import TanhLayer
+
+
+
 
 def create_ids_tab(path_ids_group, group_name):
     '''Creates table of ids in record format for group group_name'''
     print 'Creating ids_tab'
     files = [ f for f in listdir(path_ids_group) if isfile(join(path_ids_group,f)) ]    
-    ids_tab = pd.DataFrame(columns = [group_name, 'id'])
+    ids_tab_rec = pd.DataFrame(columns = [group_name, 'id'])
     all_ids = dict()
     for file in files:
         f = open(join(path_ids_group, file), 'r')
@@ -30,12 +44,96 @@ def create_ids_tab(path_ids_group, group_name):
         local_tab = pd.DataFrame()
         local_tab['id'] = ids[:-1]
         local_tab[group_name] = file.replace('_ids.txt', '')
-        ids_tab = ids_tab.append(local_tab)
+        ids_tab_rec = ids_tab_rec.append(local_tab)
         all_ids[file.replace('_ids.txt', '')] = ids
+    ids_tab_rec['True'] = True
+    ids_tab = pd.pivot_table(ids_tab_rec, values = 'True', columns = 'politique', index = 'id').fillna(False)
     print 'Ids_tab created'
-    return [all_ids, ids_tab]
-   
-[all_ids, ids_tab] = create_ids_tab(path_ids_politiques_fr, 'politique')
+    return (all_ids, ids_tab_rec, ids_tab)
+
+
+
+def _make_train_set(row):
+    '''Assumes all columns in row are words in vocabulary'''
+    new_columns = list(row.index) + ['context_' + col for col in row.index]
+    return_tab = pd.DataFrame(columns = new_columns)
+    list_row = list(row)
+    len_row = len(row)
+    for i, val in enumerate(list_row):
+        if val:
+            new_list = [False]*i + [True] + [False]*(len_row - i - 1) + list_row[:i] + [False] + list_row[i+1:]
+            return_tab = return_tab.append(pd.DataFrame([new_list], columns = new_columns))
+    return return_tab
+
+path = '.'
+path_ids = join(path, 'data', 'ids')
+path_ids_news_fr = join(path_ids, 'news_fr')
+path_ids_politiques_fr = join(path_ids, 'politiques_fr')
+print 'here3'
+
+(all_ids, ids_tab_rec, ids_tab) =  create_ids_tab(path_ids_politiques_fr, 'politique')
+
+# Make actual word2vec (take out additional value ie 'johnny has toys' --> johnny predicts has and toys)
+print 'here2'
+#ids_tab = ids_tab[ids_tab.sum(axis = 1) > 1]
+input_table = pd.DataFrame()
+count = 0
+import datetime
+tic = datetime.datetime.now()
+for ind, row in ids_tab.iloc[:20000].iterrows():
+    if count%100 == 0:
+        print 'Did', count, 'in', datetime.datetime.now() - tic
+        tic = datetime.datetime.now()
+    count += 1
+    input_table = input_table.append(_make_train_set(row))
+input_table.index = range(len(input_table))
+
+print 'here1'
+
+train_type = 'word2vec_ish' # 'autoencoder' or ''word2vec-ish'
+pred_cols = ids_tab.columns
+context_cols = ['context_' + col for col in pred_cols]
+if train_type == 'autoencoder':
+    ds = pandas_pybrain.make_pybrain_ds(ids_tab.iloc[:2000], pred_cols, pred_cols, normalise = False)             
+elif train_type == 'word2vec_ish':
+    ds = pandas_pybrain.make_pybrain_ds(input_table, pred_cols, context_cols, normalise = False)             
+
+print 'here'
+
+n_nodes = 10
+hiddenclass = 'SigmoidLayer'
+learningrate = 0.05
+
+# Build Network
+net = buildNetwork(ds.indim, n_nodes, ds.outdim, bias = True, hiddenclass = eval(hiddenclass))
+trainer = BackpropTrainer(net, dataset=ds, learningrate= learningrate, lrdecay=1.0, momentum=0.0, verbose=False, batchlearning=False, weightdecay=0.0)   
+    
+# Train Network
+for epoch in range(10):
+    print epoch
+    trainer.train()
+
+vec_table = pd.DataFrame(index = pred_cols, columns = range(n_nodes))
+for i, col in enumerate(pred_cols):
+    inpt = [False]*i + [True] + [False]*(len(pred_cols) - 1 - i)
+    net.activate(inpt)
+    vec = net['hidden0'].outputbuffer[net['hidden0'].offset]
+    vec_table.loc[col] = list(vec)
+
+distance_tab = pd.DataFrame(columns = pred_cols, index = pred_cols)
+for col in pred_cols:
+    for index in pred_cols:
+        distance_tab.loc[index, col] = cosine(vec_table.loc[index], vec_table.loc[col])
+
+import matplotlib.pyplot as plt
+
+plt.pcolor(distance_tab)
+plt.yticks(np.arange(0.5, len(distance_tab.index), 1), distance_tab.index)
+plt.xticks(np.arange(0.5, len(distance_tab.columns), 1), distance_tab.columns)
+plt.show()
+
+
+assert False
 
 num_following = ids_tab.groupby('id').size()
 num_following.name = 'num_following'
@@ -82,7 +180,7 @@ for (key_x, key_y) in itertools.combinations(ids_tab.politique.unique(), 2):
     affinity_mat.loc[key_x, key_y] = val
     affinity_mat.loc[key_y, key_x] = val
 
-for (key_x, key_y) in itertools.combinations(ids_tab.politique.unique(), 2):
+#for (key_x, key_y) in itertools.combinations(ids_tab.politique.unique(), 2):
 
 for key_x in ids_tab.politique.unique():
     print key_x
