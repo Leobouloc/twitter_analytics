@@ -7,7 +7,7 @@ Created on Sun Feb 15 03:32:05 2015
 Trying different stuff here : 
 One part is just loading the data.
 Another part is creating a co-existance frequency table
-Another part is implementing a "word2vec-like" thing to     
+Another part is implementing a "word2vec-like" thing to assign vectors to politicians  
 
 """
 
@@ -73,6 +73,8 @@ print 'here3'
 
 (all_ids, ids_tab_rec, ids_tab) =  create_ids_tab(path_ids_politiques_fr, 'politique')
 
+
+ids_tab_for_input = ids_tab[ids_tab.sum(axis = 1) >= 2]
 # Make actual word2vec (take out additional value ie 'johnny has toys' --> johnny predicts has and toys)
 print 'here2'
 #ids_tab = ids_tab[ids_tab.sum(axis = 1) > 1]
@@ -87,7 +89,7 @@ for ind, row in ids_tab.iloc[:20000].iterrows():
     count += 1
     input_table = input_table.append(_make_train_set(row))
 input_table.index = range(len(input_table))
-
+input_table = input_table[input_table.sum(axis = 1) > 1]
 print 'here1'
 
 train_type = 'word2vec_ish' # 'autoencoder' or ''word2vec-ish'
