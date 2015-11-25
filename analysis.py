@@ -18,6 +18,8 @@ from os import listdir
 from os.path import isfile, join
 import itertools
 
+import matplotlib.pyplot as plt
+
 from scipy.spatial.distance import cosine
 
 import pandas_pybrain
@@ -29,7 +31,7 @@ from pybrain.structure.modules   import SigmoidLayer
 from pybrain.structure.modules   import TanhLayer
 
 
-
+    
 
 def create_ids_tab(path_ids_group, group_name):
     '''Creates table of ids in record format for group group_name'''
@@ -47,7 +49,7 @@ def create_ids_tab(path_ids_group, group_name):
         ids_tab_rec = ids_tab_rec.append(local_tab)
         all_ids[file.replace('_ids.txt', '')] = ids
     ids_tab_rec['True'] = True
-    ids_tab = pd.pivot_table(ids_tab_rec, values = 'True', columns = 'politique', index = 'id').fillna(False)
+    ids_tab = pd.pivot_table(ids_tab_rec, values = 'True', columns = group_name, index = 'id').fillna(False)
     print 'Ids_tab created'
     return (all_ids, ids_tab_rec, ids_tab)
 
@@ -69,10 +71,48 @@ path = '.'
 path_ids = join(path, 'data', 'ids')
 path_ids_news_fr = join(path_ids, 'news_fr')
 path_ids_politiques_fr = join(path_ids, 'politiques_fr')
-print 'here3'
+print 'here3'   
 
 (all_ids, ids_tab_rec, ids_tab) =  create_ids_tab(path_ids_politiques_fr, 'politique')
 
+
+
+# Perform PCA
+from sklearn.decomposition import PCA
+import random
+from mpl_toolkits.mplot3d import Axes3D
+
+ids_tab = ids_tab[ids_tab.sum(axis = 1) >= 2]
+index = random.sample(ids_tab.index, min(1000000, len(ids_tab))) # Max 1M
+ids_tab = ids_tab.loc[index,:]
+
+
+pca = PCA(n_components=5)
+pca.fit(ids_tab)
+
+eigenvectors = pd.DataFrame(columns = ids_tab.columns)
+for i, row in enumerate(pca.components_):
+    eigenvectors.loc[i, :] = row
+    
+# Make plot according to top eigenvectors
+a = eigenvectors.loc[0, :] # 
+b = eigenvectors.loc[1, :] # 
+c = eigenvectors.loc[2, :] #
+d = eigenvectors.loc[3, :] #
+
+x = (ids_tab*a).sum(axis = 1)
+y = (ids_tab*b).sum(axis = 1)
+z = (ids_tab*c).sum(axis = 1)
+g = (ids_tab*d).sum(axis = 1)
+
+#fig = plt.figure()
+#ax = fig.add_subplot(111, projection='3d')
+index = random.sample(ids_tab.index, 30000)
+
+#ax.scatter(x[index], y[index], z[index], c='r', marker='x') # 3D
+plt.scatter(y[index], z[index], c='r', alpha=0.3) # 2D
+plt.show()
+assert False
 
 ids_tab_for_input = ids_tab[ids_tab.sum(axis = 1) >= 2]
 # Make actual word2vec (take out additional value ie 'johnny has toys' --> johnny predicts has and toys)
